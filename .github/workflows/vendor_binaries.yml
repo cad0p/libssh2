@@ -1,0 +1,49 @@
+name: 'Build vendor binaries'
+
+# Builds pre-compiled libssh2 + OpenSSL artifacts for VVTerm and attaches
+# them as a release asset. Triggered by pushing a tag matching
+# `hostkey-cert-verify-*` (the pre-release naming convention).
+#
+# Output: libssh2-vendor.tar.gz containing the Vendor/libssh2/ layout
+# (macos/, ios/, ios-simulator/, include/, module.modulemap) that VVTerm
+# extracts directly — no source build needed on the VVTerm side.
+
+on:
+  push:
+    tags:
+      - 'hostkey-cert-verify-*'
+
+permissions:
+  contents: write   # to upload the release asset
+
+env:
+  WORK_DIR: /tmp/build
+  VENDOR_DIR: /tmp/build/vendor
+  OUTPUT: /tmp/build/libssh2-vendor.tar.gz
+
+jobs:
+  build:
+    name: 'Build libssh2 vendor (macOS + iOS + sim)'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: 'Show environment'
+        run: |
+          echo "tag: $GITHUB_REF_NAME"
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+          xcrun --sdk iphoneos --show-sdk-version
+          cmake --version | head -1
+
+      - name: 'Build OpenSSL + libssh2 (3 targets)'
+        run: bash scripts/build_vendor.sh
+
+      - name: 'Upload to release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" "$OUTPUT" \
+            --repo "$GITHUB_REPOSITORY" --clobber
